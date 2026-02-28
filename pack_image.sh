@@ -222,6 +222,13 @@ function make_ubuntu_image()
     install_packages "${ROOTFS_BUILD_DIR}"
     rm "${ROOTFS_BUILD_DIR}"/app/hobot_debs/ -rf
 
+    # Switch to RT kernel: modify boot.scr to load Image-rt
+    echo "Switching boot image to Image-rt"
+    sed 's/imagefile="Image"/imagefile="Image-rt"/' \
+        "${HR_LOCAL_DIR}/source/hobot-boot/debian/boot/boot.cmd" > /tmp/boot_rt.cmd
+    mkimage -C none -A arm -T script -d /tmp/boot_rt.cmd "${ROOTFS_BUILD_DIR}/boot/boot.scr"
+    rm -f /tmp/boot_rt.cmd
+
     chmod -R 775 "${ROOTFS_BUILD_DIR}/app"
 
     unmount_image "${IMG_FILE}"

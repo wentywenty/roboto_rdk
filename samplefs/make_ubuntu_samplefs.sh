@@ -182,8 +182,6 @@ create_base_sources_list()
 deb http://${UBUNTU_MIRROR} $release main restricted universe multiverse
 #deb-src http://${UBUNTU_MIRROR} $release main restricted universe multiverse
 EOF
-	echo "deb [arch=arm64 signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://mirrors4.tuna.tsinghua.edu.cn/ros2/ubuntu ${release} main" | tee "${basedir}"/etc/apt/sources.list.d/ros2.list >/dev/null
-	cp -af "${LOCAL_DIR}"/ros-archive-keyring.gpg  "${basedir}"/usr/share/keyrings/
 }
 
 
@@ -227,24 +225,30 @@ compress_base_root() {
 		--exclude='./run/*' --exclude='./tmp/*' --exclude='./sys/*' .
 }
 
-install_package()
+install_packages()
 {
-	retry=0
-	retry_max=5
+	local package_list="$*"
+	if [ -z "${package_list}" ]; then
+		return 0
+	fi
 
-	echo "Install ${1}"
+	local retry=0
+	local retry_max=5
+
+	echo "Installing packages: ${package_list}"
 	while true
 	do
-		eval 'LC_ALL=C LANG=C chroot ${dst_dir} /bin/bash -c "DEBIAN_FRONTEND=noninteractive apt-get -y $apt_extra --no-install-recommends install ${1}"'
+		eval 'LC_ALL=C LANG=C chroot ${dst_dir} /bin/bash -c "DEBIAN_FRONTEND=noninteractive apt-get -y $apt_extra --no-install-recommends install ${package_list}"'
 		if [[ $? -eq 0 ]]; then
 			return 0
 		else
-			retry=$(("$retry" + 1))
+			retry=$((retry + 1))
 			if [ "${retry}" == "${retry_max}" ]; then
+				echo "ERROR: Failed to install packages after ${retry_max} retries"
 				return 1
 			else
 				sleep 1
-				echo "Retrying ${1} package install"
+				echo "Retrying package install (attempt ${retry}/${retry_max})"
 			fi
 		fi
 	done
@@ -311,15 +315,9 @@ make_base_root() {
 		eval 'LC_ALL=C LANG=C chroot ${dst_dir} /bin/bash -c "DEBIAN_FRONTEND=noninteractive apt-get -q -y $apt_extra upgrade"'
 		[[ $? -ne 0 ]] && exit 1
 		log_out "Installing base packages" "${dst_dir}" "info"
-		package_list="${ADD_PACKAGE_LIST}"
-		if [ -n "${package_list}" ]; then
-			for package in ${package_list}
-			do
-				if ! install_package "${package}"; then
-					echo "ERROR: Failed to install ${package}"
-					exit 1
-				fi
-			done
+		if ! install_packages ${ADD_PACKAGE_LIST}; then
+			echo "ERROR: Failed to install packages"
+			exit 1
 		fi
 
 		# Fixed GCC version: 9.3.0
@@ -336,15 +334,9 @@ make_base_root() {
 		eval 'LC_ALL=C LANG=C chroot ${dst_dir} /bin/bash -c "DEBIAN_FRONTEND=noninteractive apt-get -q -y $apt_extra upgrade"'
 		[[ $? -ne 0 ]] && exit 1
 		log_out "Installing base packages" "${dst_dir}" "info"
-		package_list="${ADD_PACKAGE_LIST}"
-		if [ -n "${package_list}" ]; then
-			for package in ${package_list}
-			do
-				if ! install_package "${package}"; then
-					echo "ERROR: Failed to install ${package}"
-					exit 1
-				fi
-			done
+		if ! install_packages ${ADD_PACKAGE_LIST}; then
+			echo "ERROR: Failed to install packages"
+			exit 1
 		fi
 
 		# Fixed GCC version: 11.x.x
@@ -362,9 +354,9 @@ make_base_root() {
 			chroot "${dst_dir}" /bin/bash -c "apt install gpg-agent -y"
 			chroot "${dst_dir}" /bin/bash -c "apt-get install software-properties-common -y"
 			chroot "${dst_dir}" /bin/bash -c "add-apt-repository ppa:xtradeb/apps -y"
-			chroot "${dst_dir}" /bin/bash -c "apt install firefox -y"
+			# chroot "${dst_dir}" /bin/bash -c "apt install firefox -y"
 			# ppa can not use apt_extra,so install here
-			chroot "${dst_dir}" /bin/bash -c "apt install firefox-locale-zh-hans -y"
+			# chroot "${dst_dir}" /bin/bash -c "apt install firefox-locale-zh-hans -y"
 			chroot "${dst_dir}" /bin/bash -c "add-apt-repository  --remove ppa:xtradeb/apps -y"
 		fi
 	fi
@@ -378,20 +370,14 @@ make_base_root() {
 	eval 'LC_ALL=C LANG=C chroot ${dst_dir} /bin/bash -c "DEBIAN_FRONTEND=noninteractive apt-get -q -y $apt_extra upgrade"'
 	[[ $? -ne 0 ]] && exit 1
 	log_out "Installing base packages" "${dst_dir}" "info"
-	package_list="${ADD_PACKAGE_LIST}"
-	if [ -n "${package_list}" ]; then
-		for package in ${package_list}
-		do
-			if ! install_package "${package}"; then
-				echo "ERROR: Failed to install ${package}"
-				exit 1
-			fi
-		done
+	if ! install_packages ${ADD_PACKAGE_LIST}; then
+		echo "ERROR: Failed to install packages"
+		exit 1
 	fi
 
 	if [ "${RELEASE}" == "jammy" ]; then
-		chroot "${dst_dir}" /bin/bash -c "apt install ros-humble-ros-base -y"
-		chroot "${dst_dir}" /bin/bash -c "apt install ros-humble-cv-bridge -y"
+		# Install ROS2 Humble
+		install_ros2 "${dst_dir}"
 		chroot "${dst_dir}" /bin/bash -c "apt install libpcl-dev libgles2-mesa-dev ocl-icd-libopencl1 opencl-headers -y"
 	fi
 	
@@ -401,13 +387,6 @@ make_base_root() {
 	chroot "${dst_dir}" /bin/bash -c "pip3 config set install.trusted-host https://pypi.tuna.tsinghua.edu.cn"
 	chroot "${dst_dir}" /bin/bash -c "pip3 install ${PYTHON_PACKAGE_LIST}"
 	chroot "${dst_dir}" /bin/bash -c "pip3 install --upgrade packaging"
-	py_pkg_list="${PYTHON_PACKAGE_LIST}"
-	if [ -n "${py_pkg_list}" ]; then
-		for package in ${py_pkg_list}
-		do
-			chroot "${dst_dir}" /bin/bash -c "pip3 install ${package}"
-		done
-	fi
 	chroot "${dst_dir}" /bin/bash -c "rm -rf /root/.cache"
 
 	DEST_LANG="en_US.UTF-8"
@@ -435,6 +414,51 @@ make_base_root() {
 	end_debootstrap "${dst_dir}"
 
 	trap - INT TERM EXIT
+}
+
+install_ros2()
+{
+	local dst_dir=$1
+	log_out "Installing" "ROS 2 (Local Deb Method)" "info"
+	
+	chroot "${dst_dir}" /bin/bash -c "apt-get update"
+	chroot "${dst_dir}" /bin/bash -c "apt-get install -y -qq gnupg2 lsb-release ca-certificates >/dev/null 2>&1"
+
+	local local_deb="${LOCAL_DIR}/ros2-apt-source_1.1.0.jammy_all.deb"
+	
+	if [ -f "$local_deb" ]; then
+		log_out "Local ROS2 configuration package found, copying..." "" "info"
+		cp "$local_deb" "${dst_dir}/tmp/ros2-apt-source.deb"
+	else
+		log_out "Error: ros2-apt-source_1.1.0.jammy_all.deb not found" "${LOCAL_DIR}/" "err"
+		exit 1
+	fi
+
+	log_out "Installing" "ROS 2 Repo Source" "info"
+	chroot "${dst_dir}" /bin/bash -c "dpkg -i /tmp/ros2-apt-source.deb"
+
+	chroot "${dst_dir}" /bin/bash -c "apt-get update"
+	chroot "${dst_dir}" /bin/bash -c "apt-get update"
+
+	log_out "Installing" "ROS 2 Packages" "info"
+
+	chroot "${dst_dir}" /bin/bash -c "apt-get install -y ros-humble-desktop ros-dev-tools python3-colcon-common-extensions"
+	chroot "${dst_dir}" /bin/bash -c "apt-get update --fix-missing"
+	
+	chroot "${dst_dir}" /bin/bash -c "apt-get install -y ros-humble-desktop ros-dev-tools python3-colcon-common-extensions"
+	chroot "${dst_dir}" /bin/bash -c "apt-get update --fix-missing"
+	chroot "${dst_dir}" /bin/bash -c "apt-get install -y ros-humble-desktop ros-dev-tools python3-colcon-common-extensions"
+	chroot "${dst_dir}" /bin/bash -c "apt-get update --fix-missing"
+	chroot "${dst_dir}" /bin/bash -c "apt-get install -y ros-humble-desktop ros-dev-tools python3-colcon-common-extensions"
+	
+	chroot "${dst_dir}" /bin/bash -c "apt-get remove brltty -y"
+
+	rm "${dst_dir}/tmp/ros2-apt-source.deb"
+
+	local setup_line="source /opt/ros/humble/setup.bash"
+	if ! grep -q "${setup_line}" "${dst_dir}/root/.bashrc"; then
+		echo "${setup_line}" >> "${dst_dir}/root/.bashrc"
+	fi
 }
 
 log_out "Build ubuntu base" "root_path=$root_path tar_file=$tar_file" "info"

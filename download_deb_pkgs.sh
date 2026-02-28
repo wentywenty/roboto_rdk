@@ -109,7 +109,7 @@ get_download_pkg_list()
         download_pkg_list+=("${pkg_name},${VERSION},${PKG_FILE},${PKG_URL},${MD5SUM}")
 
         # Filter dependencies to include only those that start with "hobot" "tros" "xserver"
-        DEPENDS=$(echo "${DEPENDS}" | awk '{for(i=1;i<=NF;i++) if($i ~ /^hobot/ || $i ~ /^tros/ || $i ~ /^xserver/) print $i}' | tr '\n' ' ')
+        DEPENDS=$(echo "${DEPENDS}" | awk '{for(i=1;i<=NF;i++) if($i ~ /^hobot/ || $i ~ /^xserver/) print $i}' | tr '\n' ' ')
 
         # Remove leading and trailing whitespace
         DEPENDS=$(echo "${DEPENDS}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
