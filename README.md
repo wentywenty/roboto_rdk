@@ -1,244 +1,267 @@
-# RDK X5 系统镜像构建
+# RDK X5 System Image Builder
 
-基于 D-Robotics RDK X5 开发板的 Ubuntu 22.04 (Jammy) ARM64 系统镜像构建工具。
+English | [简体中文](./README_CN.md)
 
-> 官方文档：[简体中文](./READMErdk_CN.md) | [English](./READMErdk_EN.md)
+> Official D-Robotics documentation: [简体中文](./READMErdk_CN.md) | [English](./READMErdk_EN.md)
 
-## 功能特性
+Build tool for Ubuntu 22.04 (Jammy) ARM64 system images targeting the D-Robotics RDK X5 development board.
 
-- 一键构建完整系统镜像（标准内核 + RT 实时内核）
-- 子命令式构建，支持分步执行
-- 本地编译 deb 包，也支持从官方仓库下载预编译包
-- 自动构建 Ubuntu Desktop / Server rootfs
-- 默认使用 RT 实时内核启动
+## Features
 
-## 系统要求
+- One-click full system image build (standard kernel + RT real-time kernel)
+- Subcommand-based build, supports step-by-step execution
+- Local deb package compilation, also supports downloading prebuilt packages from the official repository
+- Automatic Ubuntu Desktop / Server rootfs generation
+- Boots with RT real-time kernel by default
 
-- **主机系统**：Ubuntu 22.04（推荐，与目标系统一致）
-- **架构**：x86_64
-- **权限**：需要 root / sudo
-- **磁盘空间**：建议 50GB 以上可用空间
-- **网络**：需要访问 GitHub 和 Ubuntu 软件源
+## System Requirements
 
-## 快速开始
+- **Host OS**: Ubuntu 22.04 (recommended, matches target system)
+- **Architecture**: x86_64
+- **Privileges**: Requires root / sudo
+- **Disk Space**: 50GB+ free space recommended
+- **Network**: Access to GitHub and Ubuntu package repositories required
 
-### 一键全量构建
+## Quick Start
+
+### One-Click Full Build
 
 ```bash
 sudo ./build.sh all
 ```
 
-将依次执行：环境初始化 → 内核编译 → Bootloader 编译 → rootfs 构建 → deb 打包 → 镜像生成。
+Executes in order: environment setup → kernel build → bootloader build → rootfs build → deb packaging → image generation.
 
-### 分步构建
+### Step-by-Step Build
 
 ```bash
-# 1. 初始化环境（安装依赖、工具链、拉取源码）
+# 1. Initialize environment (install dependencies, toolchain, fetch source code)
 sudo ./build.sh setup
 
-# 2. 编译 Bootloader（miniboot/uboot/nand_disk.img）
+# 2. Build Bootloader (miniboot/uboot/nand_disk.img)
 sudo ./build.sh bootloader
 
-# 3. 编译内核（标准内核 + RT 内核）
+# 3. Build kernels (standard + RT)
 sudo ./build.sh kernel
 
-# 4. 构建 Ubuntu rootfs
+# 4. Build Ubuntu rootfs
 sudo ./build.sh rootfs
 
-# 5. 编译并打包 deb 软件包
+# 5. Build deb packages from source
 sudo ./build.sh debs
 
-# 6. 生成最终系统镜像
+# 6. Generate final system image
 sudo ./build.sh pack
 ```
 
-### 快速重建镜像（跳过 rootfs 构建）
+### Quick Image Rebuild (Skip rootfs Build)
 
-如果 rootfs 已经构建好并放在 `rootfs/` 目录下，可以直接：
+If rootfs is already built and placed in the `rootfs/` directory:
 
 ```bash
-# 编译内核 + bootloader + 打包 deb + 生成镜像
+# Build kernel + bootloader + deb packages + generate image
 sudo ./build.sh image
 ```
 
-## build.sh 子命令说明
+## build.sh Subcommands
 
-| 命令 | 说明 | 等价操作 |
-|------|------|----------|
-| `setup` | 安装构建依赖、下载交叉编译工具链、repo sync 源码 | apt-get + toolchain + repo sync |
-| `bootloader` | 编译 Bootloader 并复制 nand_disk.img 到 miniboot 固件目录 | xbuild.sh lunch 0 + xbuild.sh |
-| `kernel` | 编译标准内核和 RT 实时内核 | mk_kernel.sh + mk_kernel_rt.sh |
-| `rootfs` | 构建 Ubuntu rootfs 并拷贝到 `rootfs/` 目录，解压 sysroot 到 `deploy/rootfs/` | make_ubuntu_samplefs.sh desktop |
-| `debs` | 从源码编译所有 deb 包（自动检测/解压 sysroot） | mk_debs.sh |
-| `pack` | 打包生成最终 `.img` 镜像文件 | pack_image.sh -l |
-| `image` | 完整构建（不含环境初始化和 rootfs） | kernel + bootloader + debs + pack |
-| `all` | 全流程构建 | setup + kernel + bootloader + rootfs + debs + pack |
+| Command | Description | Equivalent |
+|---------|-------------|------------|
+| `setup` | Install build dependencies, download cross-compilation toolchain, repo sync source code | apt-get + toolchain + repo sync |
+| `bootloader` | Build bootloader and copy nand_disk.img to miniboot firmware directory | xbuild.sh lunch 0 + xbuild.sh |
+| `kernel` | Build standard kernel and RT real-time kernel | mk_kernel.sh + mk_kernel_rt.sh |
+| `rootfs` | Build Ubuntu rootfs, copy to `rootfs/`, extract sysroot to `deploy/rootfs/` | make_ubuntu_samplefs.sh desktop |
+| `debs` | Build all deb packages from source (auto-detects/extracts sysroot) | mk_debs.sh |
+| `pack` | Generate final `.img` image file | pack_image.sh -l |
+| `image` | Full build (without environment setup and rootfs) | kernel + bootloader + debs + pack |
+| `all` | Complete build pipeline | setup + kernel + bootloader + rootfs + debs + pack |
 
-### 选项
+### Options
 
 ```
--c <配置文件>   指定构建配置文件（默认：ubuntu-22.04_desktop_rdk-x5_release.conf）
--h             显示帮助信息
+-c <config_file>  Specify build config file (default: ubuntu-22.04_desktop_rdk-x5_release.conf)
+-h                Show help
 ```
 
-### 示例
+### Examples
 
 ```bash
-# 使用 Server 配置打包镜像
+# Pack image with Server configuration
 sudo ./build.sh pack -c build_params/ubuntu-22.04_server_rdk-x5_release.conf
 
-# 使用 Beta 配置全量构建
+# Full build with Beta configuration
 sudo ./build.sh all -c build_params/ubuntu-22.04_desktop_rdk-x5_beta.conf
 ```
 
-## 目录结构
+## Directory Structure
 
 ```
 .
-├── build.sh                     # 主构建脚本（子命令入口）
-├── build_params/                # 构建配置文件
+├── build.sh                     # Main build script (subcommand entry point)
+├── build_params/                # Build configuration files
 │   ├── ubuntu-22.04_desktop_rdk-x5_release.conf
 │   ├── ubuntu-22.04_desktop_rdk-x5_beta.conf
 │   ├── ubuntu-22.04_server_rdk-x5_release.conf
 │   └── ubuntu-22.04_server_rdk-x5_beta.conf
-├── mk_kernel.sh                 # 编译标准内核
-├── mk_kernel_rt.sh              # 编译 RT 实时内核
-├── mk_debs.sh                   # 编译源码并打包 deb
-├── pack_image.sh                # 打包系统镜像
-├── download_deb_pkgs.sh         # 从官方仓库下载预编译 deb 包
-├── download_samplefs.sh         # 从官方服务器下载预制 rootfs（分步构建时不需要）
-├── hobot_customize_rootfs.sh    # rootfs 定制化脚本
-├── VERSION                      # 镜像版本号
-├── samplefs/                    # rootfs 构建目录
-│   ├── make_ubuntu_samplefs.sh  # 使用 debootstrap 构建 Ubuntu rootfs
-│   ├── jammy/                   # Ubuntu 22.04 软件包列表
-│   └── desktop/                 # Desktop 版 rootfs 构建产物
-├── source/                      # 源码目录（repo sync 下载）
-│   ├── kernel/                  # Linux 内核源码 (6.1.83)
-│   ├── kernel-rt/               # RT 内核源码 (6.1.83-rt28)
-│   ├── bootloader/              # miniboot + U-Boot 源码
-│   ├── hobot-boot/              # 内核镜像 + boot.scr 打包
-│   ├── hobot-dtb/               # 设备树
-│   ├── hobot-multimedia/        # 多媒体库
-│   ├── hobot-camera/            # 摄像头驱动
-│   ├── hobot-dnn/               # BPU 神经网络推理运行时
-│   ├── hobot-configs/           # 系统配置
-│   └── ...                      # 其他 hobot-* 软件包源码
-├── rootfs/                      # rootfs tar.gz 存放目录（pack 时使用）
-├── deb_packages/                # 官方下载的预编译 deb 包
-├── third_packages/              # 第三方 deb 包（用户自行放入，会自动安装）
-└── deploy/                      # 构建产物输出目录
-    ├── kernel/                  # 内核编译产物（Image, Image-rt, dtb, modules）
-    ├── deb_pkgs/                # 本地编译的 deb 包
-    └── rootfs/                  # 解压后的根文件系统
+├── mk_kernel.sh                 # Build standard kernel
+├── mk_kernel_rt.sh              # Build RT real-time kernel
+├── mk_debs.sh                   # Build source code and package as deb
+├── pack_image.sh                # Pack system image
+├── download_deb_pkgs.sh         # Download prebuilt deb packages from official repo
+├── download_samplefs.sh         # Download prebuilt rootfs from official server
+├── hobot_customize_rootfs.sh    # Rootfs customization script
+├── VERSION                      # Image version number
+├── samplefs/                    # Rootfs build directory
+│   ├── make_ubuntu_samplefs.sh  # Build Ubuntu rootfs using debootstrap
+│   ├── jammy/                   # Ubuntu 22.04 package lists
+│   └── desktop/                 # Desktop rootfs build output
+├── source/                      # Source code directory (fetched via repo sync)
+│   ├── kernel/                  # Linux kernel source (6.1.83)
+│   ├── kernel-rt/               # RT kernel source (6.1.83-rt28)
+│   ├── bootloader/              # miniboot + U-Boot source
+│   ├── hobot-boot/              # Kernel image + boot.scr packaging
+│   ├── hobot-dtb/               # Device trees
+│   ├── hobot-multimedia/        # Multimedia libraries
+│   ├── hobot-camera/            # Camera drivers
+│   ├── hobot-dnn/               # BPU neural network inference runtime
+│   ├── hobot-configs/           # System configuration
+│   └── ...                      # Other hobot-* package sources
+├── rootfs/                      # rootfs tar.gz storage (used by pack)
+├── deb_packages/                # Prebuilt deb packages from official repo
+├── third_packages/              # Third-party deb packages (user-provided, auto-installed)
+└── deploy/                      # Build output directory
+    ├── kernel/                  # Kernel build artifacts (Image, Image-rt, dtb, modules)
+    ├── deb_pkgs/                # Locally compiled deb packages
+    └── rootfs/                  # Extracted root filesystem
 ```
 
-## 构建流程详解
+## Build Process Details
 
-### 镜像打包流程（pack_image.sh）
+### Image Packing Flow (pack_image.sh)
 
 ```
 rootfs/*.tar.gz (samplefs)
     │
-    ├─ 解压到 deploy/rootfs/
-    ├─ 执行 hobot_customize_rootfs.sh 定制化配置
-    ├─ 安装 deb 包（来源合并，同名保留最新版本）：
-    │   ├─ deb_packages/       （官方下载的预编译包）
-    │   ├─ third_packages/     （用户自定义第三方包）
-    │   └─ deploy/deb_pkgs/    （本地编译的包，-l 模式）
-    ├─ 生成 RT 内核 boot.scr（默认使用 Image-rt 启动）
-    └─ 创建分区并写入 .img 镜像文件
+    ├─ Extract to deploy/rootfs/
+    ├─ Run hobot_customize_rootfs.sh for customization
+    ├─ Install deb packages (merged, keep latest version for duplicates):
+    │   ├─ deb_packages/       (prebuilt packages from official repo)
+    │   ├─ third_packages/     (user-provided third-party packages)
+    │   └─ deploy/deb_pkgs/    (locally compiled packages, -l mode)
+    ├─ Generate RT kernel boot.scr (boots Image-rt by default)
+    └─ Create partitions and write .img file
 ```
 
-### Deb 包来源说明
+### Deb Package Sources
 
-系统镜像中安装的 deb 包有两种来源：
+Deb packages installed in the system image come from multiple sources:
 
-| 来源 | 目录 | 说明 |
-|------|------|------|
-| 官方预编译 | `deb_packages/` | 由 `download_deb_pkgs.sh` 从 `archive.d-robotics.cc` 下载 |
-| 本地编译 | `deploy/deb_pkgs/` | 由 `mk_debs.sh` 从 `source/` 源码编译生成 |
-| 第三方 | `third_packages/` | 用户手动放入的自定义 deb 包 |
+| Source | Directory | Description |
+|--------|-----------|-------------|
+| Official prebuilt | `deb_packages/` | Downloaded by `download_deb_pkgs.sh` from `archive.d-robotics.cc` |
+| Locally compiled | `deploy/deb_pkgs/` | Built by `mk_debs.sh` from `source/` |
+| Third-party | `third_packages/` | User-provided custom deb packages |
 
-**注意**：`pack_image.sh` 会安装以上所有目录中的 **全部** `.deb` 文件，不受配置文件中 `RDK_DEB_PKG_LIST` 限制。如需排除某个包，需将其 `.deb` 文件从目录中移除。
+**Note**: `pack_image.sh` installs **all** `.deb` files from the above directories, regardless of `RDK_DEB_PKG_LIST` in the config file. To exclude a package, remove its `.deb` file from the directory.
 
-### 本地编译的 Deb 包列表
+### Locally Compiled Deb Packages
 
-`mk_debs.sh` 可编译以下 18 个软件包：
+`mk_debs.sh` builds the following 18 packages:
 
-| 包名 | 说明 |
-|------|------|
-| hobot-boot | 内核镜像 (Image + Image-rt) + 驱动模块 + boot.scr |
-| hobot-kernel-headers | 内核头文件（用于编译外部模块） |
-| hobot-dtb | 设备树 + Overlay |
-| hobot-configs | 系统配置 |
-| hobot-utils | 系统工具集 |
-| hobot-display | MIPI DSI 显示屏驱动 |
-| hobot-wifi | Wi-Fi 配置 |
-| hobot-io | GPIO / I2C / SPI 接口工具 |
-| hobot-io-samples | IO 接口使用示例 |
-| hobot-multimedia | 多媒体支持库 |
-| hobot-multimedia-dev | 多媒体开发头文件 |
-| hobot-multimedia-samples | 多媒体示例 |
-| hobot-camera | 摄像头 Sensor 驱动 |
-| hobot-dnn | BPU 推理运行时 |
-| hobot-spdev | Python / C++ 开发接口 |
-| hobot-sp-samples | spdev 示例代码 |
-| hobot-miniboot | Miniboot 更新器 |
-| hobot-audio-config | 音频 HAT 配置 + Overlay |
+| Package | Description |
+|---------|-------------|
+| hobot-boot | Kernel images (Image + Image-rt) + driver modules + boot.scr |
+| hobot-kernel-headers | Kernel headers (for building external modules) |
+| hobot-dtb | Device trees + overlays |
+| hobot-configs | System configuration |
+| hobot-utils | System utility collection |
+| hobot-display | MIPI DSI display driver |
+| hobot-wifi | Wi-Fi configuration |
+| hobot-io | GPIO / I2C / SPI interface tools |
+| hobot-io-samples | IO interface examples |
+| hobot-multimedia | Multimedia support libraries |
+| hobot-multimedia-dev | Multimedia development headers |
+| hobot-multimedia-samples | Multimedia examples |
+| hobot-camera | Camera sensor drivers |
+| hobot-dnn | BPU inference runtime |
+| hobot-spdev | Python / C++ development interface |
+| hobot-sp-samples | spdev sample code |
+| hobot-miniboot | Miniboot updater |
+| hobot-audio-config | Audio HAT configuration + overlays |
 
-## 内核相关
+## Kernel
 
-### 标准内核与 RT 内核
+### Standard Kernel and RT Kernel
 
-本项目同时编译两个内核：
+This project builds two kernels simultaneously:
 
-| 内核 | 版本 | defconfig | 输出 |
-|------|------|-----------|------|
-| 标准内核 | 6.1.83 | `hobot_x5_rdk_ubuntu_defconfig` | `deploy/kernel/Image` |
-| RT 内核 | 6.1.83-rt28 | `hobot_x5_rdk_ubuntu_rt_defconfig` | `deploy/kernel/Image-rt` |
+| Kernel | Version | defconfig | Output |
+|--------|---------|-----------|--------|
+| Standard | 6.1.83 | `hobot_x5_rdk_ubuntu_defconfig` | `deploy/kernel/Image` |
+| RT | 6.1.83-rt28 | `hobot_x5_rdk_ubuntu_rt_defconfig` | `deploy/kernel/Image-rt` |
 
-默认使用 **RT 实时内核** 启动（`pack_image.sh` 中会自动将 `boot.scr` 修改为加载 `Image-rt`）。
+The **RT real-time kernel** is used for booting by default (`pack_image.sh` automatically modifies `boot.scr` to load `Image-rt`).
 
-### 单独编译内核
+### Build Kernel Separately
 
 ```bash
-# 编译标准内核
+# Build standard kernel
 ./mk_kernel.sh
 
-# 编译 RT 内核
+# Build RT kernel
 ./mk_kernel_rt.sh
 ```
 
-编译产物位于 `deploy/kernel/`：
+Build artifacts are located in `deploy/kernel/`:
 
 ```
 deploy/kernel/
-├── Image              # 标准内核镜像
-├── Image-rt           # RT 实时内核镜像
-├── dtb/               # 设备树文件
-├── modules/           # 内核模块
-└── kernel_headers/    # 内核头文件
+├── Image              # Standard kernel image
+├── Image-rt           # RT real-time kernel image
+├── dtb/               # Device tree files
+├── modules/           # Kernel modules
+└── kernel_headers/    # Kernel header files
 ```
 
-## 构建配置
+## FAQ
 
-配置文件位于 `build_params/` 目录，主要变量说明：
+### rootfs Build Fails (apt-cacher-ng Issue)
 
-| 变量 | 说明 | 示例值 |
-|------|------|--------|
-| `RDK_IMAGE_NAME` | 输出镜像文件名 | `rdk-x5-ubuntu22-preinstalled-desktop-3.4.1-arm64.img` |
-| `RDK_UBUNTU_VERSION` | Ubuntu 版本代号 | `jammy` |
-| `RDK_IMAGE_TYPE` | 镜像类型 | `desktop` / `server` |
-| `RDK_ARCHIVE_URL` | 官方 deb 包仓库地址 | `http://archive.d-robotics.cc/ubuntu-rdk-x5` |
-| `RDK_DEB_PKG_LIST` | 需下载的官方 deb 包列表 | 用于 `download_deb_pkgs.sh` |
-| `RDK_DEB_PKG_DIR` | 下载的 deb 包存放目录 | `deb_packages` |
-| `RDK_THIRD_DEB_PKG_DIR` | 第三方 deb 包目录 | `third_packages` |
-| `RDK_ROOTFS_DIR` | rootfs tar.gz 存放目录 | `rootfs` |
+The rootfs build uses `apt-cacher-ng` as an apt proxy cache. Ensure the service is running:
 
-## 自定义安装第三方软件包
+```bash
+sudo systemctl start apt-cacher-ng
+sudo systemctl enable apt-cacher-ng
+```
 
-如需在镜像中预装额外的 deb 包，创建 `third_packages/` 目录并放入 `.deb` 文件即可：
+### pack_image.sh Reports tar Extraction Failure
+
+Ensure there is only one `samplefs*.tar.gz` file in the `rootfs/` directory and that it is not corrupted:
+
+```bash
+ls rootfs/samplefs*.tar.gz
+file rootfs/samplefs*.tar.gz
+```
+
+### Cross-Compilation Toolchain Not Found
+
+The toolchain is installed by default at `/opt/gcc-arm-11.2-2022.02-x86_64-aarch64-none-linux-gnu/`. Verify the directory exists, or re-run:
+
+```bash
+sudo ./build.sh setup
+```
+
+### repo sync Reports "unsupported checkout state"
+
+```
+error.GitError: Cannot checkout x5-rdk-gen: .../.git: unsupported checkout state
+```
+
+This is expected and can be safely ignored. The x5-rdk-gen repository is the working directory itself, containing locally added/modified files. repo cannot checkout over these, but it does not affect syncing of subprojects under `source/`.
+
+### Installing Additional Third-Party Packages
+
+To pre-install extra deb packages in the image, create a `third_packages/` directory and place `.deb` files inside:
 
 ```bash
 mkdir -p third_packages
@@ -246,42 +269,6 @@ cp your-package.deb third_packages/
 sudo ./build.sh pack
 ```
 
-## 常见问题
+## License
 
-### rootfs 构建失败（apt-cacher-ng 问题）
-
-rootfs 构建使用 `apt-cacher-ng` 作为 apt 代理缓存。确保服务正在运行：
-
-```bash
-sudo systemctl start apt-cacher-ng
-sudo systemctl enable apt-cacher-ng
-```
-
-### pack_image.sh 报 tar 解压失败
-
-确保 `rootfs/` 目录下只有一个 `samplefs*.tar.gz` 文件，且文件完整未损坏：
-
-```bash
-ls rootfs/samplefs*.tar.gz
-file rootfs/samplefs*.tar.gz
-```
-
-### 交叉编译工具链找不到
-
-工具链默认安装在 `/opt/gcc-arm-11.2-2022.02-x86_64-aarch64-none-linux-gnu/`，确认该目录存在，或重新执行：
-
-```bash
-sudo ./build.sh setup
-```
-
-### repo sync 报 unsupported checkout state
-
-```
-error.GitError: Cannot checkout x5-rdk-gen: .../.git: unsupported checkout state
-```
-
-这是正常现象，可以忽略。因为 x5-rdk-gen 仓库本身就是当前工作目录，存在本地新增/修改的文件，repo 无法对其执行 checkout，但不影响 `source/` 下各子项目的正常同步。
-
-## 许可证
-
-详见 [LICENSE](./LICENSE) 文件。
+See the [LICENSE](./LICENSE) file for details.
