@@ -36,6 +36,8 @@ xfce4-taskmanager
 xfce4-terminal
 xfce4-screenshooter
 xserver-xorg-video-fbdev
+xserver-xorg-core
+xserver-common
 xdotool
 xinput
 unclutter

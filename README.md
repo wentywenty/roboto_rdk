@@ -2,6 +2,8 @@
 
 基于 D-Robotics RDK X5 开发板的 Ubuntu 22.04 (Jammy) ARM64 系统镜像构建工具。
 
+> 官方文档：[简体中文](./READMErdk_CN.md) | [English](./READMErdk_EN.md)
+
 ## 功能特性
 
 - 一键构建完整系统镜像（标准内核 + RT 实时内核）
@@ -26,24 +28,27 @@
 sudo ./build.sh all
 ```
 
-将依次执行：环境初始化 → 内核编译 → rootfs 构建 → deb 打包 → 镜像生成。
+将依次执行：环境初始化 → 内核编译 → Bootloader 编译 → rootfs 构建 → deb 打包 → 镜像生成。
 
 ### 分步构建
 
 ```bash
-# 1. 初始化环境（安装依赖、工具链、拉取源码、下载官方 deb 包）
+# 1. 初始化环境（安装依赖、工具链、拉取源码）
 sudo ./build.sh setup
 
-# 2. 编译内核（标准内核 + RT 内核）
+# 2. 编译 Bootloader（miniboot/uboot/nand_disk.img）
+sudo ./build.sh bootloader
+
+# 3. 编译内核（标准内核 + RT 内核）
 sudo ./build.sh kernel
 
-# 3. 构建 Ubuntu rootfs
+# 4. 构建 Ubuntu rootfs
 sudo ./build.sh rootfs
 
-# 4. 编译并打包 deb 软件包
+# 5. 编译并打包 deb 软件包
 sudo ./build.sh debs
 
-# 5. 生成最终系统镜像
+# 6. 生成最终系统镜像
 sudo ./build.sh pack
 ```
 
@@ -52,7 +57,7 @@ sudo ./build.sh pack
 如果 rootfs 已经构建好并放在 `rootfs/` 目录下，可以直接：
 
 ```bash
-# 编译内核 + 打包 deb + 生成镜像
+# 编译内核 + bootloader + 打包 deb + 生成镜像
 sudo ./build.sh image
 ```
 
@@ -60,13 +65,14 @@ sudo ./build.sh image
 
 | 命令 | 说明 | 等价操作 |
 |------|------|----------|
-| `setup` | 安装构建依赖、下载交叉编译工具链、repo sync 源码、下载官方 deb 包 | apt-get + toolchain + repo sync + download_deb_pkgs.sh |
+| `setup` | 安装构建依赖、下载交叉编译工具链、repo sync 源码 | apt-get + toolchain + repo sync |
+| `bootloader` | 编译 Bootloader 并复制 nand_disk.img 到 miniboot 固件目录 | xbuild.sh lunch 0 + xbuild.sh |
 | `kernel` | 编译标准内核和 RT 实时内核 | mk_kernel.sh + mk_kernel_rt.sh |
-| `rootfs` | 构建 Ubuntu rootfs 并拷贝到 `rootfs/` 目录 | make_ubuntu_samplefs.sh desktop |
-| `debs` | 从源码编译所有 deb 包 | mk_debs.sh |
+| `rootfs` | 构建 Ubuntu rootfs 并拷贝到 `rootfs/` 目录，解压 sysroot 到 `deploy/rootfs/` | make_ubuntu_samplefs.sh desktop |
+| `debs` | 从源码编译所有 deb 包（自动检测/解压 sysroot） | mk_debs.sh |
 | `pack` | 打包生成最终 `.img` 镜像文件 | pack_image.sh -l |
-| `image` | 完整构建（不含环境初始化和 rootfs） | kernel + debs + pack |
-| `all` | 全流程构建 | setup + kernel + rootfs + debs + pack |
+| `image` | 完整构建（不含环境初始化和 rootfs） | kernel + bootloader + debs + pack |
+| `all` | 全流程构建 | setup + kernel + bootloader + rootfs + debs + pack |
 
 ### 选项
 
@@ -267,6 +273,14 @@ file rootfs/samplefs*.tar.gz
 ```bash
 sudo ./build.sh setup
 ```
+
+### repo sync 报 unsupported checkout state
+
+```
+error.GitError: Cannot checkout x5-rdk-gen: .../.git: unsupported checkout state
+```
+
+这是正常现象，可以忽略。因为 x5-rdk-gen 仓库本身就是当前工作目录，存在本地新增/修改的文件，repo 无法对其执行 checkout，但不影响 `source/` 下各子项目的正常同步。
 
 ## 许可证
 

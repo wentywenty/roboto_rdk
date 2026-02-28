@@ -630,11 +630,80 @@ if [ $# -eq 0 ];then
     # clear all
     rm -rf "$debian_dst_dir"
     mkdir -p "$debian_dst_dir"
-    # make all
+
+    MAX_JOBS=${MAX_JOBS:-$(nproc)}
+    LOG_DIR="${HR_LOCAL_DIR}/.deb_build_logs"
+    rm -rf "${LOG_DIR}" && mkdir -p "${LOG_DIR}"
+    echo "Building ${#deb_pkg_list[@]} packages in parallel (max ${MAX_JOBS} jobs)..."
+
+    running_pids=""
+    running_names=""
+    failed=0
+
     for pkg_name in "${deb_pkg_list[@]}"; do
-        echo "+++++++++++++++++ Make package ${pkg_name} +++++++++++++++++"
-        make_debian_deb "${pkg_name}"
+        # Wait if we have MAX_JOBS running
+        while true; do
+            count=0
+            new_pids=""
+            new_names=""
+            idx=0
+            for pid in $running_pids; do
+                name=$(echo "$running_names" | cut -d' ' -f$((idx+1)))
+                if kill -0 "$pid" 2>/dev/null; then
+                    count=$((count+1))
+                    new_pids="${new_pids:+$new_pids }$pid"
+                    new_names="${new_names:+$new_names }$name"
+                else
+                    if ! wait "$pid"; then
+                        echo "[FAIL] $name — last 20 lines:"
+                        tail -20 "${LOG_DIR}/$name.log"
+                        failed=1
+                    else
+                        echo "[DONE] $name"
+                    fi
+                fi
+                idx=$((idx+1))
+            done
+            running_pids="$new_pids"
+            running_names="$new_names"
+            [ "$failed" -eq 1 ] && exit 1
+            [ "$count" -lt "$MAX_JOBS" ] && break
+            sleep 0.5
+        done
+
+        echo "[START] ${pkg_name}"
+        ( make_debian_deb "${pkg_name}" ) > "${LOG_DIR}/${pkg_name}.log" 2>&1 &
+        running_pids="${running_pids:+$running_pids }$!"
+        running_names="${running_names:+$running_names }${pkg_name}"
     done
+
+    # Wait for all remaining jobs
+    idx=0
+    for pid in $running_pids; do
+        name=$(echo "$running_names" | cut -d' ' -f$((idx+1)))
+        if ! wait "$pid"; then
+            echo "[FAIL] $name — last 20 lines:"
+            tail -20 "${LOG_DIR}/$name.log"
+            failed=1
+        else
+            echo "[DONE] $name"
+        fi
+        idx=$((idx+1))
+    done
+    [ "$failed" -eq 1 ] && exit 1
+
+    echo ""
+    echo "All ${#deb_pkg_list[@]} packages built successfully."
+
+    # Copy all .deb files and build logs to deb_packages/ directory
+    DEB_PKG_DIR="${HR_LOCAL_DIR}/deb_packages"
+    mkdir -p "${DEB_PKG_DIR}"
+    # Clean old .deb and .log files to avoid stale versions accumulating
+    rm -f "${DEB_PKG_DIR}"/*.deb "${DEB_PKG_DIR}"/*.log
+    find "${debian_dst_dir}" -maxdepth 1 -name "*.deb" -exec cp -f {} "${DEB_PKG_DIR}/" \;
+    cp -f "${LOG_DIR}"/*.log "${DEB_PKG_DIR}/"
+    rm -rf "${LOG_DIR}"
+    echo "Copied all .deb files and build logs to ${DEB_PKG_DIR}/"
 elif [ $# -eq 1 ];then
     key_name=${1}
     found=false

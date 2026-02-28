@@ -5,13 +5,14 @@
 # Usage: sudo ./build.sh <command> [-c config_file]
 #
 # Commands:
-#   setup    Install dependencies, toolchain, repo init & sync
-#   kernel   Build standard + RT kernels
-#   rootfs   Build Ubuntu rootfs (samplefs)
-#   debs     Build deb packages
-#   pack     Pack final image (debs install + image creation)
-#   image    Full build: kernel + debs + pack (assumes setup done)
-#   all      Everything: setup + kernel + rootfs + debs + pack
+#   setup      Install dependencies, toolchain, repo init & sync
+#   kernel     Build standard + RT kernels
+#   bootloader Build bootloader (miniboot/uboot/nand_disk.img)
+#   rootfs     Build Ubuntu rootfs (samplefs)
+#   debs       Build deb packages
+#   pack       Pack final image (debs install + image creation)
+#   image      Full build: kernel + bootloader + debs + pack
+#   all        Everything: setup + kernel + bootloader + rootfs + debs + pack
 #
 # Options:
 #   -c  Specify config file (default: ubuntu-22.04_desktop_rdk-x5_release.conf)
@@ -30,13 +31,14 @@ show_help() {
     echo "Usage: sudo $0 <command> [-c config_file]"
     echo
     echo "Commands:"
-    echo "  setup    Install dependencies, download toolchain, repo sync"
-    echo "  kernel   Build standard kernel + RT kernel"
-    echo "  rootfs   Build Ubuntu rootfs (samplefs)"
-    echo "  debs     Build deb packages from source"
-    echo "  pack     Pack final .img image (install debs + create partitions)"
-    echo "  image    Full build: kernel + debs + pack"
-    echo "  all      Everything: setup + kernel + rootfs + debs + pack"
+    echo "  setup      Install dependencies, download toolchain, repo sync"
+    echo "  kernel     Build standard kernel + RT kernel"
+    echo "  bootloader Build bootloader (miniboot/uboot/nand_disk.img)"
+    echo "  rootfs     Build Ubuntu rootfs (samplefs)"
+    echo "  debs       Build deb packages from source"
+    echo "  pack       Pack final .img image (install debs + create partitions)"
+    echo "  image      Full build: kernel + bootloader + debs + pack"
+    echo "  all        Everything: setup + kernel + bootloader + rootfs + debs + pack"
     echo
     echo "Options:"
     echo "  -c file  Specify config file"
@@ -118,14 +120,7 @@ do_setup() {
     if [ ! -d "${HR_LOCAL_DIR}/.repo" ]; then
         sudo -u "${SUDO_USER}" bash -c "export REPO_URL='https://mirrors.tuna.tsinghua.edu.cn/git/git-repo/' && cd '${HR_LOCAL_DIR}' && repo init -u git@github.com:D-Robotics/x5-manifest.git -b main"
     fi
-    sudo -u "${SUDO_USER}" bash -c "cd '${HR_LOCAL_DIR}' && repo sync"
-
-    echo ""
-    echo "========================================="
-    echo "[setup] Downloading deb packages..."
-    echo "========================================="
-    cd "${HR_LOCAL_DIR}"
-    bash "${HR_LOCAL_DIR}/download_deb_pkgs.sh" -c "${CONFIG_FILE}"
+    sudo -u "${SUDO_USER}" bash -c "cd '${HR_LOCAL_DIR}' && repo sync" || echo "[setup] repo sync reported errors (may be safe to ignore if only x5-rdk-gen checkout failed)"
 
     echo "[setup] Done."
 }
@@ -151,6 +146,33 @@ do_kernel() {
 }
 
 ########################################
+# bootloader: Build miniboot/uboot
+########################################
+do_bootloader() {
+    echo ""
+    echo "========================================="
+    echo "[bootloader] Building bootloader..."
+    echo "========================================="
+    cd "${HR_LOCAL_DIR}/source/bootloader/build"
+    ./xbuild.sh lunch 0
+    ./xbuild.sh
+
+    # Copy nand_disk.img to hobot-miniboot firmware directory
+    local BOOTLOADER_OUT="${HR_LOCAL_DIR}/source/bootloader/out/product"
+    local MINIBOOT_FW_DIR="${HR_LOCAL_DIR}/source/hobot-miniboot/debian/lib/firmware/rdk/miniboot/stable"
+    if [ -f "${BOOTLOADER_OUT}/nand_disk.img" ]; then
+        local DATE_TAG=$(date '+%Y%m%d')
+        mkdir -p "${MINIBOOT_FW_DIR}"
+        cp -f "${BOOTLOADER_OUT}/nand_disk.img" "${MINIBOOT_FW_DIR}/disk_nand_minimum_boot_${DATE_TAG}.img"
+        echo "[bootloader] Copied nand_disk.img to hobot-miniboot firmware as disk_nand_minimum_boot_${DATE_TAG}.img"
+    else
+        echo "[bootloader] WARNING: nand_disk.img not found in ${BOOTLOADER_OUT}"
+    fi
+
+    echo "[bootloader] Done."
+}
+
+########################################
 # rootfs: Build Ubuntu samplefs
 ########################################
 do_rootfs() {
@@ -165,6 +187,13 @@ do_rootfs() {
     mkdir -p "${HR_LOCAL_DIR}/rootfs"
     cp -f "${HR_LOCAL_DIR}"/samplefs/desktop/samplefs_desktop_*.tar.gz "${HR_LOCAL_DIR}/rootfs/"
 
+    # Extract samplefs to deploy/rootfs/ as sysroot for cross-compilation (hobot-spdev etc.)
+    echo "[rootfs] Extracting samplefs to deploy/rootfs for sysroot..."
+    local SYSROOT_DIR="${HR_LOCAL_DIR}/deploy/rootfs"
+    rm -rf "${SYSROOT_DIR}"
+    mkdir -p "${SYSROOT_DIR}"
+    tar --same-owner --numeric-owner -xzpf "${HR_LOCAL_DIR}"/rootfs/samplefs_desktop_*.tar.gz -C "${SYSROOT_DIR}"
+
     echo "[rootfs] Done."
 }
 
@@ -176,6 +205,22 @@ do_debs() {
     echo "========================================="
     echo "[debs] Building deb packages..."
     echo "========================================="
+
+    # Ensure sysroot (deploy/rootfs) exists - required by hobot-spdev cross-compilation
+    local SYSROOT_DIR="${HR_LOCAL_DIR}/deploy/rootfs"
+    if [ ! -f "${SYSROOT_DIR}/usr/include/string.h" ] && \
+       [ ! -f "${SYSROOT_DIR}/usr/include/aarch64-linux-gnu/gnu/stubs.h" ]; then
+        local SAMPLEFS_TAR=$(ls "${HR_LOCAL_DIR}"/rootfs/samplefs_desktop_*.tar.gz 2>/dev/null | head -1)
+        if [ -z "${SAMPLEFS_TAR}" ]; then
+            echo "[ERROR] deploy/rootfs sysroot not found, and no samplefs tarball in rootfs/."
+            echo "        Please run './build.sh rootfs' first."
+            exit 1
+        fi
+        echo "[debs] deploy/rootfs sysroot not found, extracting from ${SAMPLEFS_TAR}..."
+        mkdir -p "${SYSROOT_DIR}"
+        tar --same-owner --numeric-owner -xzpf "${SAMPLEFS_TAR}" -C "${SYSROOT_DIR}"
+    fi
+
     cd "${HR_LOCAL_DIR}"
     bash "${HR_LOCAL_DIR}/mk_debs.sh"
 
@@ -201,6 +246,7 @@ do_pack() {
 ########################################
 do_image() {
     do_kernel
+    do_bootloader
     do_debs
     do_pack
 }
@@ -211,6 +257,7 @@ do_image() {
 do_all() {
     do_setup
     do_kernel
+    do_bootloader
     do_rootfs
     do_debs
     do_pack
@@ -225,13 +272,14 @@ echo "Config: ${CONFIG_FILE}"
 echo "========================================="
 
 case "${COMMAND}" in
-    setup)  do_setup ;;
-    kernel) do_kernel ;;
-    rootfs) do_rootfs ;;
-    debs)   do_debs ;;
-    pack)   do_pack ;;
-    image)  do_image ;;
-    all)    do_all ;;
+    setup)      do_setup ;;
+    kernel)     do_kernel ;;
+    bootloader) do_bootloader ;;
+    rootfs)     do_rootfs ;;
+    debs)       do_debs ;;
+    pack)       do_pack ;;
+    image)      do_image ;;
+    all)        do_all ;;
     *)
         echo "[ERROR]: Unknown command '${COMMAND}'"
         show_help

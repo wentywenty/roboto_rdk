@@ -361,19 +361,14 @@ make_base_root() {
 		fi
 	fi
 
-	# upgrade packages
+	# upgrade packages with security/updates/backports sources
 	create_sources_list ${RELEASE} "${dst_dir}"
-	log_out "Updating focal-updates and focal-security packages" "${dst_dir}" "info"
+	log_out "Updating package index with security/updates sources" "${dst_dir}" "info"
 	eval 'LC_ALL=C LANG=C chroot ${dst_dir} /bin/bash -c "DEBIAN_FRONTEND=noninteractive apt-get -q -y $apt_extra update"'
 	[[ $? -ne 0 ]] && exit 1
-	log_out "Upgrading base packages" "${dst_dir}" "info"
-	eval 'LC_ALL=C LANG=C chroot ${dst_dir} /bin/bash -c "DEBIAN_FRONTEND=noninteractive apt-get -q -y $apt_extra upgrade"'
+	log_out "Upgrading all packages to latest security/updates versions" "${dst_dir}" "info"
+	eval 'LC_ALL=C LANG=C chroot ${dst_dir} /bin/bash -c "DEBIAN_FRONTEND=noninteractive apt-get -q -y $apt_extra dist-upgrade"'
 	[[ $? -ne 0 ]] && exit 1
-	log_out "Installing base packages" "${dst_dir}" "info"
-	if ! install_packages ${ADD_PACKAGE_LIST}; then
-		echo "ERROR: Failed to install packages"
-		exit 1
-	fi
 
 	if [ "${RELEASE}" == "jammy" ]; then
 		# Install ROS2 Humble
@@ -396,9 +391,13 @@ make_base_root() {
 		sed -i "s/^# $DEST_LANG/$DEST_LANG/" "$dst_dir"/etc/locale.gen
 		sed -i "s/^# $DEST_LANG_CN/$DEST_LANG_CN/" "$dst_dir"/etc/locale.gen
 	fi
-	eval 'LC_ALL=C LANG=C chroot $dst_dir /bin/bash -c "locale-gen $DEST_LANG"'
-	eval 'LC_ALL=C LANG=C chroot $dst_dir /bin/bash -c "locale-gen $DEST_LANG_CN"'
-	eval 'LC_ALL=C LANG=C chroot $dst_dir /bin/bash -c "update-locale LANG=$DEST_LANG LANGUAGE=$DEST_LANG"'
+	chroot "${dst_dir}" /bin/bash -c "locale-gen en_US en_US.UTF-8"
+	chroot "${dst_dir}" /bin/bash -c "locale-gen zh_CN zh_CN.UTF-8"
+	chroot "${dst_dir}" /bin/bash -c "update-locale LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8"
+	# Persist LANG in /etc/environment for all sessions
+	grep -q '^LANG=' "${dst_dir}/etc/environment" 2>/dev/null && \
+		sed -i 's/^LANG=.*/LANG=en_US.UTF-8/' "${dst_dir}/etc/environment" || \
+		echo "LANG=en_US.UTF-8" >> "${dst_dir}/etc/environment"
 
 	chroot "${dst_dir}" /bin/bash -c "systemctl disable hostapd NetworkManager-wait-online.service"
 
