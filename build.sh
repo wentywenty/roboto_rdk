@@ -238,6 +238,17 @@ do_pack() {
     cd "${HR_LOCAL_DIR}"
     bash "${HR_LOCAL_DIR}/pack_image.sh" -l -c "${CONFIG_FILE}"
 
+    # Calculate SHA256 and create zip archive
+    source "${CONFIG_FILE}"
+    local IMG_FILE="${HR_LOCAL_DIR}/deploy/${RDK_IMAGE_NAME}"
+    if [ -f "${IMG_FILE}" ]; then
+        echo "[pack] Calculating SHA256..."
+        (cd "${HR_LOCAL_DIR}/deploy" && sha256sum "$(basename "${IMG_FILE}")" | tee "${IMG_FILE}.sha256")
+        echo "[pack] Creating zip archive..."
+        (cd "${HR_LOCAL_DIR}/deploy" && zip "$(basename "${IMG_FILE}" .img).zip" "$(basename "${IMG_FILE}")" "$(basename "${IMG_FILE}").sha256")
+        echo "[pack] Zip created: ${IMG_FILE%.img}.zip"
+    fi
+
     echo "[pack] Done."
 }
 

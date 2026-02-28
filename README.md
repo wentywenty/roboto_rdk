@@ -166,7 +166,7 @@ Deb packages installed in the system image come from multiple sources:
 
 ### Locally Compiled Deb Packages
 
-`mk_debs.sh` builds the following 18 packages:
+`mk_debs.sh` builds the following 17 packages:
 
 | Package | Description |
 |---------|-------------|
@@ -185,7 +185,6 @@ Deb packages installed in the system image come from multiple sources:
 | hobot-camera | Camera sensor drivers |
 | hobot-dnn | BPU inference runtime |
 | hobot-spdev | Python / C++ development interface |
-| hobot-sp-samples | spdev sample code |
 | hobot-miniboot | Miniboot updater |
 | hobot-audio-config | Audio HAT configuration + overlays |
 

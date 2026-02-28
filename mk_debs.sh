@@ -507,18 +507,6 @@ function make_debian_deb() {
         cp -arf "${debian_src_dir}"/"${pkg_name}"/output/*.whl  "${deb_dst_dir}"/usr/lib/hobot_spdev/
         is_allowed=1
         ;;
-    hobot-sp-samples)
-        pkg_description="Example of Python and C/C++ Development Interface"
-
-        gen_contrl_file "${deb_dst_dir}/DEBIAN" "${pkg_name}" "${pkg_version}" "${pkg_description}"
-
-        # set Depends
-        sed -i 's/Depends: .*$/Depends: hobot-spdev,hobot-models-basic/' "${deb_dst_dir}"/DEBIAN/control
-        # set Commit
-        sed -i "s/^Description:.*/&\\n Git Commit: $(git -C "${debian_src_dir}/${pkg_name}" rev-parse HEAD)/" "${deb_dst_dir}"/DEBIAN/control
-
-        is_allowed=1
-        ;;
     hobot-multimedia-samples)
         pkg_description="Example of Multimedia"
 
@@ -611,7 +599,6 @@ deb_pkg_list=(
     "hobot-camera"
     "hobot-dnn"
     "hobot-spdev"
-    "hobot-sp-samples"
     "hobot-multimedia-samples"
     "hobot-miniboot"
     "hobot-audio-config"

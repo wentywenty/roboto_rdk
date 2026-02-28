@@ -164,7 +164,7 @@ rootfs/*.tar.gz (samplefs)
 
 ### 本地编译的 Deb 包列表
 
-`mk_debs.sh` 可编译以下 18 个软件包：
+`mk_debs.sh` 可编译以下 17 个软件包：
 
 | 包名 | 说明 |
 |------|------|
@@ -183,7 +183,6 @@ rootfs/*.tar.gz (samplefs)
 | hobot-camera | 摄像头 Sensor 驱动 |
 | hobot-dnn | BPU 推理运行时 |
 | hobot-spdev | Python / C++ 开发接口 |
-| hobot-sp-samples | spdev 示例代码 |
 | hobot-miniboot | Miniboot 更新器 |
 | hobot-audio-config | 音频 HAT 配置 + Overlay |
 

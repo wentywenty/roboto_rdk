@@ -452,6 +452,8 @@ install_ros2()
 	
 	chroot "${dst_dir}" /bin/bash -c "apt-get remove brltty -y"
 
+	chroot "${dst_dir}" /bin/bash -c "apt-get upgrade -y"
+
 	rm "${dst_dir}/tmp/ros2-apt-source.deb"
 
 	local setup_line="source /opt/ros/humble/setup.bash"
