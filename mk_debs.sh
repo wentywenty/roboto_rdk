@@ -3,6 +3,8 @@
 # set -x
 set -euo pipefail
 
+source "$(dirname "$0")/.rdk_config"
+
 export HR_LOCAL_DIR=$(realpath $(cd $(dirname $0); pwd))
 
 # 编译出来的镜像保存位置
@@ -118,13 +120,13 @@ function get_version() {
 
 
 function make_debian_deb() {
-    pkg_name=${1}
-    pkg_version=$(get_version "${debian_src_dir}"/"${pkg_name}")-${pkg_build_time}
-
+    src_name=${1}
+    pkg_name="${src_name//x3-/}"
+    pkg_version=$(get_version "${debian_src_dir}"/"${src_name}")-${pkg_build_time}
     #命名规范：hobot-包名_版本_架构
     deb_name=${pkg_name}_${pkg_version}_${ARCH}
     deb_dst_dir=${debian_dst_dir}/${deb_name}
-    deb_src_dir=${debian_src_dir}/${pkg_name}/debian
+    deb_src_dir=${debian_src_dir}/${src_name}/debian
     rm -rf "${debian_dst_dir}"/"${pkg_name}"_*
     echo deb_dst_dir = "${deb_dst_dir}"
     mkdir -p "${deb_dst_dir}"
@@ -133,7 +135,7 @@ function make_debian_deb() {
     echo "start ${FUNCNAME}: ${deb_dst_dir}/${deb_name}.deb"
 
     is_allowed=0
-    case ${pkg_name} in
+    case ${src_name} in
     hobot-boot)
         KERNEL_DEPLOY_DIR=${IMAGE_DEPLOY_DIR}/kernel
         if [ ! -d "${KERNEL_DEPLOY_DIR}" ]; then
@@ -150,6 +152,18 @@ function make_debian_deb() {
         # set Commit
         sed -i "s/^Description:.*/&\\n Git Commit: $(git -C "${debian_src_dir}/${pkg_name}" rev-parse HEAD)/" "${deb_dst_dir}"/DEBIAN/control
         sed -i "s/^Description:.*/&\\n Kernel Commit: $(git -C "${debian_src_dir}/kernel" rev-parse HEAD)/" "${deb_dst_dir}"/DEBIAN/control
+        case "$RDK_SOC_NAME" in
+            x3)
+                sed -i "s/^Description:.*/&\\n Kernel Commit: $(git -C "${debian_src_dir}/x3-kernel" rev-parse HEAD)/" "${deb_dst_dir}"/DEBIAN/control
+                ;;
+            x5)
+                sed -i "s/^Description:.*/&\\n Kernel Commit: $(git -C "${debian_src_dir}/kernel" rev-parse HEAD)/" "${deb_dst_dir}"/DEBIAN/control
+                ;;
+            *)
+                echo "Unknown RDK_SOC_NAME: $RDK_SOC_NAME"
+                exit 1
+                ;;
+        esac
 
         cd "${debian_src_dir}"/"${pkg_name}"/debian/boot
         rm -f boot.scr
@@ -165,7 +179,18 @@ function make_debian_deb() {
         cp -arf "${IMAGE_DEPLOY_DIR}"/kernel/Image-rt  "${boot_dest_dir}"/ || true
         cp -arf "${KERNEL_DEPLOY_DIR}"/modules/* "${deb_dst_dir}"/
         cp -arf "${debian_src_dir}"/"${pkg_name}"/debian/boot/boot.scr "${deb_dst_dir}"/boot/
-
+        case "$RDK_SOC_NAME" in
+            x3)
+                rm -f "${deb_dst_dir}/lib/modprobe.d/blacklist-x5.conf"
+                ;;
+            x5)
+                rm -f "${deb_dst_dir}/lib/modprobe.d/blacklist-x3.conf"
+                ;;
+            *)
+                echo "Unknown RDK_SOC_NAME: $RDK_SOC_NAME"
+                exit 1
+                ;;
+        esac
         is_allowed=1
         ;;
     hobot-kernel-headers)
@@ -175,8 +200,8 @@ function make_debian_deb() {
             exit 1
         fi
 
-        pkg_description="Linux kernel headers for 6.1.83 on arm64
- This package provides kernel header files for 6.1.83 on arm64.
+        pkg_description="Linux kernel headers on arm64
+ This package provides kernel header files on arm64.
  This is useful for people who need to build external modules.
  Generally used for building out-of-tree kernel modules."
 
@@ -266,6 +291,36 @@ function make_debian_deb() {
         }
 
         cp -arf "${debian_src_dir}"/"${pkg_name}"/debian/usr/bin/suspend-button "${deb_dst_dir}"/usr/bin/
+
+        case "$RDK_SOC_NAME" in
+            x3)
+                sed -i '/=== X5_START ===/,/=== X5_END ===/d' "${deb_dst_dir}"/etc/apt/sources.list.d/sunrise.list
+                ;;
+            x5)
+                sed -i '/=== X3_START ===/,/=== X3_END ===/d' "${deb_dst_dir}"/etc/apt/sources.list.d/sunrise.list
+                ;;
+            *)
+                echo "Unknown RDK_SOC_NAME: $RDK_SOC_NAME"
+                exit 1
+                ;;
+        esac
+
+        for template_file in "${deb_dst_dir}"/DEBIAN/*; do
+            if [ -f "$template_file" ]; then
+                case "$RDK_SOC_NAME" in
+                    x3)
+                        sed -i '/=== X5_START ===/,/=== X5_END ===/d' "$template_file"
+                        ;;
+                    x5)
+                        sed -i '/=== X3_START ===/,/=== X3_END ===/d' "$template_file"
+                        ;;
+                    *)
+                        echo "Unknown RDK_SOC_NAME: $RDK_SOC_NAME"
+                        exit 1
+                        ;;
+                esac
+            fi
+        done
         
         is_allowed=1
         ;;
@@ -279,7 +334,9 @@ function make_debian_deb() {
         # set Commit
         sed -i "s/^Description:.*/&\\n Git Commit: $(git -C "${debian_src_dir}/${pkg_name}" rev-parse HEAD)/" "${deb_dst_dir}"/DEBIAN/control
 
-        cd "${debian_src_dir}"/"${pkg_name}"/src
+        cp -arf "${debian_src_dir}"/"${pkg_name}"/"$RDK_SOC_NAME"/static/* "${deb_dst_dir}"/
+
+        cd "${debian_src_dir}"/"${pkg_name}"/"$RDK_SOC_NAME"/build
 
         make clean || {
            echo "make clean failed"
@@ -296,7 +353,24 @@ function make_debian_deb() {
             exit 1
         }
 
-        cp -arf "${debian_src_dir}"/"${pkg_name}"/debian/usr/bin/* "${deb_dst_dir}"/usr/bin/
+        cp -arf "${debian_src_dir}"/"${pkg_name}"/"$RDK_SOC_NAME"/debian/usr/bin/* "${deb_dst_dir}"/usr/bin/
+
+        for template_file in "${deb_dst_dir}"/DEBIAN/*; do
+            if [ -f "$template_file" ]; then
+                case "$RDK_SOC_NAME" in
+                    x3)
+                        sed -i '/=== X5_START ===/,/=== X5_END ===/d' "$template_file"
+                        ;;
+                    x5)
+                        sed -i '/=== X3_START ===/,/=== X3_END ===/d' "$template_file"
+                        ;;
+                    *)
+                        echo "Unknown RDK_SOC_NAME: $RDK_SOC_NAME"
+                        exit 1
+                        ;;
+                esac
+            fi
+        done
 
         is_allowed=1
         ;;
@@ -362,22 +436,30 @@ function make_debian_deb() {
             echo "make failed"
             exit 1
         }
-        cd ${debian_src_dir}/${pkg_name}/hb_gpioinfo
 
-        make clean || {
-           echo "make clean failed"
-           exit 1
-        }
+        case "$RDK_SOC_NAME" in
+            x5)
+                cd ${debian_src_dir}/${pkg_name}/hb_gpioinfo
 
-        make || {
-           echo "make failed"
-           exit 1
-        }
+                make clean || {
+                    echo "make clean failed"
+                    exit 1
+                }
 
-        make install || {
-            echo "make failed"
-            exit 1
-        }
+                make || {
+                    echo "make failed"
+                    exit 1
+                }
+
+                make install || {
+                    echo "make failed"
+                    exit 1
+                }
+                cp -arf "${debian_src_dir}"/"${pkg_name}"/debian/usr/bin/hb_gpioinfo "${deb_dst_dir}"/usr/bin
+                ;;
+            *)
+                ;;
+        esac
 
         if [ -f "${hb_dtb_tool_dir}"/hb_dtb_tool ];then
             echo "cp -a ${hb_dtb_tool_dir}/hb_dtb_tool ${deb_dst_dir}/usr/bin"
@@ -386,7 +468,6 @@ function make_debian_deb() {
 
         echo "cp -af ${hb_dtb_tool_dir}/*pi-config ${deb_dst_dir}/usr/bin"
         cp -af "${hb_dtb_tool_dir}"/*pi-config "${deb_dst_dir}"/usr/bin
-        cp -arf "${debian_src_dir}"/"${pkg_name}"/debian/usr/bin/hb_gpioinfo "${deb_dst_dir}"/usr/bin
 
         if [ -d "${debian_src_dir}"/"${pkg_name}"/hb_gpio_py/hobot-gpio ];then
             echo "cp -arf ${debian_src_dir}/${pkg_name}/hb_gpio_py/hobot-gpio ${deb_dst_dir}/usr/lib/"
@@ -472,6 +553,20 @@ function make_debian_deb() {
 
         # set Depends
         sed -i 's/Depends: .*$/Depends: hobot-boot/' "${deb_dst_dir}"/DEBIAN/control
+
+        case "$RDK_SOC_NAME" in
+            x3)
+                cp -ar ${debian_src_dir}/${pkg_name}/x3/usr "$deb_dst_dir/"
+                ;;
+            x5)
+                cp -ar ${debian_src_dir}/${pkg_name}/x5/usr "$deb_dst_dir/"
+                ;;
+            *)
+                echo "Unknown RDK_SOC_NAME: $RDK_SOC_NAME"
+                exit 1
+                ;;
+        esac
+
         # set Commit
         sed -i "s/^Description:.*/&\\n Git Commit: $(git -C "${debian_src_dir}/${pkg_name}" rev-parse HEAD)/" "${deb_dst_dir}"/DEBIAN/control
 
@@ -551,6 +646,27 @@ function make_debian_deb() {
         mkdir -p "${deb_dst_dir}"/boot/overlays
         cp -arf "${debian_src_dir}"/"${pkg_name}"/debian/boot/overlays/*.dtbo "${deb_dst_dir}"/boot/overlays
         rm "${deb_dst_dir}"/boot/overlays/Makefile
+
+        case "$RDK_SOC_NAME" in
+            x3)
+                cp -arf "${deb_dst_dir}"/etc/hobot_audio_config/x3/* "${deb_dst_dir}"/etc/hobot_audio_config/
+                cp -arf "${deb_dst_dir}"/lib/modprobe.d/x3/* "${deb_dst_dir}"/lib/modprobe.d/
+                ;;
+            x5)
+                cp -arf "${deb_dst_dir}"/etc/hobot_audio_config/x5/* "${deb_dst_dir}"/etc/hobot_audio_config/
+                cp -arf "${deb_dst_dir}"/lib/modprobe.d/x5/* "${deb_dst_dir}"/lib/modprobe.d/
+                ;;
+            *)
+                echo "Unknown RDK_SOC_NAME: $RDK_SOC_NAME"
+                exit 1
+                ;;
+        esac
+
+        rm -rf "${deb_dst_dir}"/etc/hobot_audio_config/x3
+        rm -rf "${deb_dst_dir}"/etc/hobot_audio_config/x5
+        rm -rf "${deb_dst_dir}"/lib/modprobe.d/x3
+        rm -rf "${deb_dst_dir}"/lib/modprobe.d/x5
+
         is_allowed=1
     ;;
     hobot-miniboot)
@@ -564,6 +680,180 @@ function make_debian_deb() {
         sed -i "s/^Description:.*/&\\n Git Commit: $(git -C "${debian_src_dir}/${pkg_name}" rev-parse HEAD)/" "${deb_dst_dir}"/DEBIAN/control
         sed -i "s/^Description:.*/&\\n Bootloader Commit: $(git -C "${debian_src_dir}/bootloader" rev-parse HEAD)/" "${deb_dst_dir}"/DEBIAN/control
         sed -i "s/^Description:.*/&\\n Uboot Commit: $(git -C "${debian_src_dir}/bootloader/uboot" rev-parse HEAD)/" "${deb_dst_dir}"/DEBIAN/control
+
+        is_allowed=1
+        ;;
+    x3-hobot-display)
+        pkg_description="Display Support Package"
+
+        gen_contrl_file "${deb_dst_dir}/DEBIAN" "${pkg_name}" "${pkg_version}" "${pkg_description}"
+
+        # set Depends
+        sed -i 's/Depends: .*$/Depends: /' ${deb_dst_dir}/DEBIAN/control
+        # set Commit
+        sed -i "s/^Description:.*/&\\n Git Commit: $(git -C "${debian_src_dir}/${pkg_name}" rev-parse HEAD)/" "${deb_dst_dir}"/DEBIAN/control
+
+        cd ${debian_src_dir}/${src_name}/hobot_display_services
+
+        make clean || {
+           echo "make clean failed"
+           exit 1
+        }
+
+        make || {
+            echo "make failed"
+            exit 1
+        }
+
+        mkdir -p $deb_dst_dir/usr/bin
+        cp -a ${debian_src_dir}/${src_name}/hobot_display_services/display $deb_dst_dir/usr/bin/hobot_display_service
+        cp -a ${debian_src_dir}/${src_name}/hobot_display_services/get_edid_raw_data $deb_dst_dir/usr/bin
+        cp -a ${debian_src_dir}/${src_name}/hobot_display_services/get_hdmi_res $deb_dst_dir/usr/bin
+        cp -a ${debian_src_dir}/${src_name}/hobot_display_services/hobot_parse_std_timing $deb_dst_dir/usr/bin
+        mkdir -p $deb_dst_dir/usr/lib
+        cp -a ${debian_src_dir}/${src_name}/hobot_display_services/liblt8618.so $deb_dst_dir/usr/lib
+
+        is_allowed=1
+        ;;
+    x3-hobot-multimedia)
+        pkg_description="Multimedia Support Package"
+
+        gen_contrl_file "${deb_dst_dir}/DEBIAN" "${pkg_name}" "${pkg_version}" "${pkg_description}"
+
+        # set Depends
+        sed -i 's/Depends: .*$/Depends: hobot-boot/' ${deb_dst_dir}/DEBIAN/control
+        # set Commit
+        sed -i "s/^Description:.*/&\\n Git Commit: $(git -C "${debian_src_dir}/${pkg_name}" rev-parse HEAD)/" "${deb_dst_dir}"/DEBIAN/control
+
+        cp -ar ${debian_src_dir}/${src_name}/usr "$deb_dst_dir/"
+        cp -ar ${debian_src_dir}/${src_name}/etc "$deb_dst_dir/"
+
+        is_allowed=1
+        ;;
+    x3-hobot-multimedia-dev)
+        pkg_description="Multimedia Development Support Package"
+
+        gen_contrl_file "${deb_dst_dir}/DEBIAN" "${pkg_name}" "${pkg_version}" "${pkg_description}"
+
+        # set Depends
+        sed -i 's/Depends: .*$/Depends: hobot-multimedia,hobot-camera/' ${deb_dst_dir}/DEBIAN/control
+        # set Commit
+        sed -i "s/^Description:.*/&\\n Git Commit: $(git -C "${debian_src_dir}/${pkg_name}" rev-parse HEAD)/" "${deb_dst_dir}"/DEBIAN/control
+
+        cp -ar ${debian_src_dir}/${pkg_name}/usr "$deb_dst_dir/"
+
+        is_allowed=1
+        ;;
+    x3-hobot-multimedia-samples)
+        pkg_description="Example of Multimedia (Hapi)"
+
+        gen_contrl_file "${deb_dst_dir}/DEBIAN" "${pkg_name}" "${pkg_version}" "${pkg_description}"
+
+        # set Depends
+        sed -i 's/Depends: .*$/Depends: hobot-multimedia-dev,hobot-multimedia/' ${deb_dst_dir}/DEBIAN/control
+        # set Commit
+        sed -i "s/^Description:.*/&\\n Git Commit: $(git -C "${debian_src_dir}/${pkg_name}" rev-parse HEAD)/" "${deb_dst_dir}"/DEBIAN/control
+        
+        is_allowed=1
+        ;;
+    x3-hobot-camera)
+        pkg_description="Camera Sensor Support Package"
+
+        gen_contrl_file "${deb_dst_dir}/DEBIAN" "${pkg_name}" "${pkg_version}" "${pkg_description}"
+
+        # set Depends
+        sed -i 's/Depends: .*$/Depends: hobot-boot/' ${deb_dst_dir}/DEBIAN/control
+        # set Commit
+        sed -i "s/^Description:.*/&\\n Git Commit: $(git -C "${debian_src_dir}/${pkg_name}" rev-parse HEAD)/" "${deb_dst_dir}"/DEBIAN/control
+
+        cd ${debian_src_dir}/${src_name}/drivers
+
+        make clean || {
+           echo "make clean failed"
+           exit 1
+        }
+
+        make || {
+            echo "make failed"
+            exit 1
+        }
+
+        mkdir -p $deb_dst_dir/usr/lib/sensorlib
+        cp -a ${debian_src_dir}/${src_name}/drivers/*.so $deb_dst_dir/usr/lib/sensorlib
+
+        find ${debian_src_dir}/${src_name}/camera_configs -name "*.so" -exec cp {} $deb_dst_dir/usr/lib/sensorlib/ \;
+
+        mkdir -p $deb_dst_dir/app/
+        cp -ar ${debian_src_dir}/${src_name}/camera_configs $deb_dst_dir/app/
+
+        mkdir -p "$deb_dst_dir/usr/bin/"
+        cp ${debian_src_dir}/${src_name}/camera_configs/common/initweb.sh "$deb_dst_dir/usr/bin/"
+
+        is_allowed=1
+        ;;
+    x3-hobot-spdev)
+        pkg_description="Python and C/C++ Development Interface"
+
+        gen_contrl_file "${deb_dst_dir}/DEBIAN" "${pkg_name}" "${pkg_version}" "${pkg_description}"
+
+        # set Depends
+        sed -i 's/Depends: .*$/Depends: hobot-multimedia,hobot-camera,hobot-dnn/' ${deb_dst_dir}/DEBIAN/control
+        # set Commit
+        sed -i "s/^Description:.*/&\\n Git Commit: $(git -C "${debian_src_dir}/${pkg_name}" rev-parse HEAD)/" "${deb_dst_dir}"/DEBIAN/control
+
+        cd ${debian_src_dir}/${src_name}
+
+        ./build.sh clean || {
+            echo "build.sh clean failed"
+            exit 1
+        }
+
+        ./build.sh || {
+            echo "build.sh failed"
+            exit 1
+        }
+
+        mkdir -p $deb_dst_dir/usr/lib
+        cp -arf ${debian_src_dir}/${src_name}/output/*.so $deb_dst_dir/usr/lib/
+        mkdir -p $deb_dst_dir/usr/include
+        cp -arf ${debian_src_dir}/${src_name}/output/include/*.h  $deb_dst_dir/usr/include/
+        mkdir -p $deb_dst_dir/usr/lib/hobot_spdev/
+        cp -arf ${debian_src_dir}/${src_name}/output/*.whl  $deb_dst_dir/usr/lib/hobot_spdev/
+        is_allowed=1
+        ;;
+    x3-hobot-sp-samples)
+        pkg_description="Example of Python and C/C++ Development Interface"
+
+        gen_contrl_file "${deb_dst_dir}/DEBIAN" "${pkg_name}" "${pkg_version}" "${pkg_description}"
+
+        # set Depends
+        sed -i 's/Depends: .*$/Depends: hobot-spdev,hobot-models-basic/' ${deb_dst_dir}/DEBIAN/control
+        # set Commit
+        sed -i "s/^Description:.*/&\\n Git Commit: $(git -C "${debian_src_dir}/${pkg_name}" rev-parse HEAD)/" "${deb_dst_dir}"/DEBIAN/control
+
+        is_allowed=1
+        ;;
+    x3-hobot-miniboot)
+        pkg_description="RDK Miniboot updater"
+
+        gen_contrl_file "${deb_dst_dir}/DEBIAN" "${pkg_name}" "${pkg_version}" "${pkg_description}"
+
+        # set Depends
+        sed -i 's/Depends: .*$/Depends: /' ${deb_dst_dir}/DEBIAN/control
+        # set Commit
+        sed -i "s/^Description:.*/&\\n Git Commit: $(git -C "${debian_src_dir}/${pkg_name}" rev-parse HEAD)/" "${deb_dst_dir}"/DEBIAN/control
+
+        is_allowed=1
+        ;;
+    x3-hobot-bpu-drivers)
+        pkg_description="Horizon BPU Drivers"
+
+        gen_contrl_file "${deb_dst_dir}/DEBIAN" "${pkg_name}" "${pkg_version}" "${pkg_description}"
+
+        # set Depends
+        sed -i 's/Depends: .*$/Depends: hobot-boot/' ${deb_dst_dir}/DEBIAN/control
+        # set Commit
+        sed -i "s/^Description:.*/&\\n Git Commit: $(git -C "${debian_src_dir}/${pkg_name}" rev-parse HEAD)/" "${deb_dst_dir}"/DEBIAN/control
 
         is_allowed=1
         ;;
@@ -584,7 +874,7 @@ function make_debian_deb() {
     fi
 }
 
-deb_pkg_list=(
+deb_pkg_list_x5=(
     "hobot-boot"
     "hobot-kernel-headers"
     "hobot-dtb"
@@ -604,6 +894,41 @@ deb_pkg_list=(
     "hobot-audio-config"
 )
 
+deb_pkg_list_x3=(
+    "hobot-boot"
+    "hobot-kernel-headers"
+    "hobot-dtb"
+    "x3-hobot-bpu-drivers"
+    "hobot-configs"
+    "hobot-utils"
+    "x3-hobot-display"
+    "hobot-wifi"
+    "hobot-io"
+    "hobot-io-samples"
+    "x3-hobot-multimedia"
+    "x3-hobot-multimedia-dev"
+    "x3-hobot-camera"
+    "hobot-dnn"
+    "x3-hobot-spdev"
+    "x3-hobot-sp-samples"
+    "x3-hobot-multimedia-samples"
+    "x3-hobot-miniboot"
+    "hobot-audio-config"
+)
+
+case "$RDK_SOC_NAME" in
+    x3)
+        deb_pkg_list=("${deb_pkg_list_x3[@]}")
+        ;;
+    x5)
+        deb_pkg_list=("${deb_pkg_list_x5[@]}")
+        ;;
+    *)
+        echo "Unknown RDK_SOC_NAME: $RDK_SOC_NAME"
+        exit 1
+        ;;
+esac
+
 function help_msg
 {
     echo "./mk_debs.sh [all] | [deb_name]"
@@ -611,7 +936,6 @@ function help_msg
         echo "    ${pkg_name}"
     done
 }
-
 
 if [ $# -eq 0 ];then
     # clear all
