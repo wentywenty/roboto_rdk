@@ -39,8 +39,9 @@ case "$RDK_SOC_NAME" in
         kernel_config_file=hobot_x5_rdk_ubuntu_rt_defconfig
         kernel_version=6.1.83
         KERNEL_SRC_DIR=${HR_TOP_DIR}/source/kernel-rt
-		KERNEL_SOURCE_DIR=${HR_TOP_DIR}/source/kernel
-		KERNEL_RT_PATCH=patch-6.1.83-rt28.patch
+        KERNEL_SOURCE_DIR=${HR_TOP_DIR}/source/kernel
+        KERNEL_RT_PATCH=patch-6.1.83-rt28.patch
+        GS_USB_PATCH=${HR_TOP_DIR}/build_params/gs_usb.patch
         ;;
     *)
         echo "Unknown RDK_SOC_NAME: $RDK_SOC_NAME"
@@ -52,12 +53,17 @@ esac
 if [ -n "$KERNEL_SRC_DIR" ] && [ ! -d "$KERNEL_SRC_DIR" ]; then
         echo "cp kernel to kernel-rt and apply patch..."
         cp -rf "${KERNEL_SOURCE_DIR}" "$KERNEL_SRC_DIR" || exit 1
-		
-		if [ -n "$KERNEL_RT_PATCH" ]; then
-	        cd "$KERNEL_SRC_DIR" || exit 1
-	        patch -p1 < ${KERNEL_RT_PATCH} || exit 1
-	        cd - || exit 1
-		fi
+
+        if [ -n "$KERNEL_RT_PATCH" ]; then
+                cd "$KERNEL_SRC_DIR" || exit 1
+                patch -p1 < "${KERNEL_RT_PATCH}" || exit 1
+                cd - || exit 1
+        fi
+fi
+
+# 打上 gs_usb patch
+if [ -f "${GS_USB_PATCH}" ]; then
+        patch --forward --batch -p1 -d "${KERNEL_SRC_DIR}" < "${GS_USB_PATCH}" || exit 1
 fi
 
 kernel_version=$(awk "/^VERSION =/{print \$3}" "${KERNEL_SRC_DIR}"/Makefile)
