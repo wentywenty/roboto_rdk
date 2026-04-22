@@ -1,6 +1,22 @@
 # RDK X5 系统镜像构建
 
+
 [English](./README.md) | 简体中文
+
+## 📦 镜像下载
+
+编译好的系统镜像文件无需本地构建，可直接在 [GitHub Releases 页面](https://github.com/wentywenty/x5-rdk-gen/releases) 下载。
+我们同时提供了 **谷歌网盘** 和 **百度网盘** 的分流下载，便于国内外用户获取。
+
+- **GitHub Release**（推荐，含所有历史版本）  
+    https://github.com/wentywenty/x5-rdk-gen/releases
+- **谷歌网盘分流**  
+    链接见每个 Release 页面说明
+- **百度网盘分流**  
+    链接见每个 Release 页面说明
+
+下载后请参考下文“烧录说明”或“镜像使用方法”进行刷写。
+
 
 > 官方文档：[简体中文](./READMErdk_CN.md) | [English](./READMErdk_EN.md)
 

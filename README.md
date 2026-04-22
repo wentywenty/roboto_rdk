@@ -1,6 +1,22 @@
 # RDK X5 System Image Builder
 
+
 English | [简体中文](./README_CN.md)
+
+## 📦 System Image Download
+
+Pre-built system image files are available for direct download from the [GitHub Releases page](https://github.com/wentywenty/x5-rdk-gen/releases).
+We also provide **Google Drive** and **Baidu Netdisk** mirrors for users in different regions.
+
+- **GitHub Release** (recommended, all historical versions):  
+    https://github.com/wentywenty/x5-rdk-gen/releases
+- **Google Drive mirror**:  
+    See the link in each Release page
+- **Baidu Netdisk mirror**:  
+    See the link in each Release page
+
+After downloading, refer to the instructions below for flashing and usage.
+
 
 > Official D-Robotics documentation: [简体中文](./READMErdk_CN.md) | [English](./READMErdk_EN.md)
 
