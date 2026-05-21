@@ -1,4 +1,11 @@
 #!/bin/bash
+###
+ # COPYRIGHT NOTICE
+ # Copyright 2024 D-Robotics, Inc.
+ # All rights reserved.
+###
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 wentywenty
 
 # set -x
 set -euo pipefail

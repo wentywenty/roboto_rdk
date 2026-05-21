@@ -6,6 +6,8 @@
  # @Date: 2023-03-16 15:02:28
  # @LastEditTime: 2023-03-22 18:52:51
 ###
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 wentywenty
 
 set -e
 
@@ -63,7 +65,8 @@ fi
 
 # 打上 gs_usb patch
 if [ -f "${GS_USB_PATCH}" ]; then
-        patch --forward --batch -p1 -d "${KERNEL_SRC_DIR}" < "${GS_USB_PATCH}" || exit 1
+        git -C "${KERNEL_SRC_DIR}" checkout -- drivers/net/can/usb/gs_usb.c 2>/dev/null || true
+        patch --forward --batch -p1 -d "${KERNEL_SRC_DIR}" < "${GS_USB_PATCH}" || true
 fi
 
 kernel_version=$(awk "/^VERSION =/{print \$3}" "${KERNEL_SRC_DIR}"/Makefile)

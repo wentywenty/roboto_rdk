@@ -6,6 +6,8 @@
  # @Date: 2023-04-15 00:47:08
  # @LastEditTime: 2023-05-23 16:56:41
 ###
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 wentywenty
 
 set -euo pipefail
 
@@ -78,6 +80,14 @@ export IMAGE_DEPLOY_DIR=${HR_LOCAL_DIR}/deploy
 IMG_FILE="${IMAGE_DEPLOY_DIR}/${RDK_IMAGE_NAME}"
 ROOTFS_ORIG_DIR=${HR_LOCAL_DIR}/${RDK_ROOTFS_DIR}
 ROOTFS_BUILD_DIR=${IMAGE_DEPLOY_DIR}/${RDK_ROOTFS_DIR}
+
+# Clean up leftover mounts from previous failed runs
+while grep -q "${ROOTFS_BUILD_DIR}" /proc/mounts; do
+    awk -v d="${ROOTFS_BUILD_DIR}" '$2 ~ d {print $2}' /proc/mounts | sort -r | while read -r mnt; do
+        umount -l "$mnt" 2>/dev/null || true
+    done
+    sleep 0.5
+done
 
 rm -rf "${ROOTFS_BUILD_DIR}"
 [ ! -d "$ROOTFS_BUILD_DIR" ] && mkdir "${ROOTFS_BUILD_DIR}"
@@ -171,6 +181,37 @@ function make_ubuntu_image()
     # Unzip ubuntu samplefs to create image
     echo "tar -xzf ${ROOTFS_ORIG_DIR}/samplefs*.tar.gz -C ${ROOTFS_BUILD_DIR}"
     tar --same-owner --numeric-owner -xzpf "${ROOTFS_ORIG_DIR}"/samplefs*.tar.gz -C "${ROOTFS_BUILD_DIR}"
+
+    # Install roboparty packages if enabled
+    if [ "${BUILD_ROBOPARTY_PACKAGES:-no}" = "yes" ]; then
+        echo "Installing RoboParty packages..."
+        mount -t proc chproc "${ROOTFS_BUILD_DIR}/proc" || true
+        mount -t sysfs chsys "${ROOTFS_BUILD_DIR}/sys" || true
+        mount -t devtmpfs chdev "${ROOTFS_BUILD_DIR}/dev" || mount --bind /dev "${ROOTFS_BUILD_DIR}/dev" || true
+        mount -t devpts chpts "${ROOTFS_BUILD_DIR}/dev/pts" || true
+
+        # Write a real resolv.conf for chroot DNS
+        rm -f "${ROOTFS_BUILD_DIR}/etc/resolv.conf"
+        echo -e "nameserver 8.8.8.8\nnameserver 114.114.114.114" > "${ROOTFS_BUILD_DIR}/etc/resolv.conf"
+
+        curl -fsSL "http://apt.roboparty.com/roboparty.gpg?v=$(date +%s)" | \
+            gpg --dearmor --yes -o "${ROOTFS_BUILD_DIR}/usr/share/keyrings/roboparty-archive-keyring.gpg"
+        chmod 644 "${ROOTFS_BUILD_DIR}/usr/share/keyrings/roboparty-archive-keyring.gpg"
+
+        echo "deb [arch=arm64 signed-by=/usr/share/keyrings/roboparty-archive-keyring.gpg] http://apt.roboparty.com common main" \
+            > "${ROOTFS_BUILD_DIR}/etc/apt/sources.list.d/roboparty.list"
+        echo "deb [arch=arm64 signed-by=/usr/share/keyrings/roboparty-archive-keyring.gpg] http://apt.roboparty.com robopi0 main" \
+            >> "${ROOTFS_BUILD_DIR}/etc/apt/sources.list.d/roboparty.list"
+
+        chroot "${ROOTFS_BUILD_DIR}" /bin/bash -c "DEBIAN_FRONTEND=noninteractive apt-get update"
+        chroot "${ROOTFS_BUILD_DIR}" /bin/bash -c "DEBIAN_FRONTEND=noninteractive apt-get install -y roboto-all"
+
+        umount -l "${ROOTFS_BUILD_DIR}/dev/pts" >/dev/null 2>&1 || true
+        umount -l "${ROOTFS_BUILD_DIR}/dev" >/dev/null 2>&1 || true
+        umount -l "${ROOTFS_BUILD_DIR}/proc" >/dev/null 2>&1 || true
+        umount -l "${ROOTFS_BUILD_DIR}/sys" >/dev/null 2>&1 || true
+    fi
+
     mkdir -p "${ROOTFS_BUILD_DIR}"/{home,home/root,mnt,root,usr/lib,var,media}
     mkdir -p "${ROOTFS_BUILD_DIR}"/{tftpboot,var/lib,var/volatile,dev,proc,tmp}
     mkdir -p "${ROOTFS_BUILD_DIR}"/{run,sys,userdata,app,boot/hobot,boot/config}

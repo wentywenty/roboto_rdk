@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 wentywenty
 ###
 # RDK X5 Build Script
 #
@@ -26,6 +28,13 @@ export HR_LOCAL_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && p
 CONFIG_FILE="${HR_LOCAL_DIR}/build_params/ubuntu-22.04_desktop_rdk-x5_release.conf"
 TOOLCHAIN_URL="http://archive.d-robotics.cc/toolchain/gcc-arm-11.2-2022.02-x86_64-aarch64-none-linux-gnu.tar.xz"
 TOOLCHAIN_DIR="/opt/gcc-arm-11.2-2022.02-x86_64-aarch64-none-linux-gnu"
+
+# Load rdk build config (RDK_SOC_NAME, BUILD_ROBOPARTY_PACKAGES, etc.)
+source "${HR_LOCAL_DIR}/.rdk_config" 2>/dev/null || true
+
+# Allow env var to override config file values
+BUILD_ROBOPARTY_PACKAGES="${BUILD_ROBOPARTY_PACKAGES:-no}"
+export BUILD_ROBOPARTY_PACKAGES
 
 show_help() {
     echo "Usage: sudo $0 <command> [-c config_file]"
@@ -125,6 +134,9 @@ do_setup() {
     fi
     sudo -u "${SUDO_USER}" bash -c "cd '${HR_LOCAL_DIR}' && repo sync" || echo "[setup] repo sync reported errors (may be safe to ignore if only x5-rdk-gen checkout failed)"
 
+    echo "[setup] Fixing hobot-dnn symlink..."
+    ln -sf "${HR_LOCAL_DIR}/source/hobot-dnn" "${HR_LOCAL_DIR}/source/hobot-spdev/hobot-dnn"
+
     echo "[setup] Done."
 }
 
@@ -138,7 +150,6 @@ do_kernel() {
     echo "========================================="
     cd "${HR_LOCAL_DIR}"
     chown -R "${SUDO_USER}:${SUDO_USER}" "${HR_LOCAL_DIR}/.repo" 2>/dev/null || true
-    sudo -u "${SUDO_USER}" bash -c "cd '${HR_LOCAL_DIR}' && repo forall -c 'git reset --hard HEAD && git clean -fdx'" || true
     sudo -u "${SUDO_USER}" bash -c "cd '${HR_LOCAL_DIR}' && repo sync" || echo "[kernel] repo sync warning (non-fatal)"
 
     echo ""
@@ -187,25 +198,42 @@ do_bootloader() {
 # rootfs: Build Ubuntu samplefs
 ########################################
 do_rootfs() {
-    export BUILD_ROBOPARTY_PACKAGES="no"
-    export BOARD="robopi0"
-    echo ""
-    echo "========================================="
-    echo "[rootfs] Building Ubuntu samplefs..."
-    echo "========================================="
-    cd "${HR_LOCAL_DIR}/samplefs"
-    bash "${HR_LOCAL_DIR}/samplefs/make_ubuntu_samplefs.sh" desktop
+    local SAMPLEFS_VERSION=$(grep '^samplefs_version=' "${HR_LOCAL_DIR}/samplefs/make_ubuntu_samplefs.sh" | head -1 | cut -d'"' -f2)
+    local SAMPLEFS_ARCHIVE="samplefs_desktop_jammy-${SAMPLEFS_VERSION}.tar.gz"
+    local CACHE_FILE="${HR_LOCAL_DIR}/.cache/samplefs_desktop.tar.gz"
+    rm -f "${HR_LOCAL_DIR}/rootfs/samplefs_cache.tar.gz"
 
-    # Copy samplefs to rootfs/ for pack_image.sh
-    mkdir -p "${HR_LOCAL_DIR}/rootfs"
-    cp -f "${HR_LOCAL_DIR}"/samplefs/desktop/samplefs_desktop_*.tar.gz "${HR_LOCAL_DIR}/rootfs/"
+    if [ -f "${CACHE_FILE}" ]; then
+        echo ""
+        echo "========================================="
+        echo "[rootfs] Using cached rootfs tarball..."
+        echo "========================================="
+        mkdir -p "${HR_LOCAL_DIR}/samplefs/desktop"
+        cp -f "${CACHE_FILE}" "${HR_LOCAL_DIR}/samplefs/desktop/${SAMPLEFS_ARCHIVE}"
+        mkdir -p "${HR_LOCAL_DIR}/rootfs"
+        cp -f "${CACHE_FILE}" "${HR_LOCAL_DIR}/rootfs/${SAMPLEFS_ARCHIVE}"
+    else
+        echo ""
+        echo "========================================="
+        echo "[rootfs] Building Ubuntu samplefs..."
+        echo "========================================="
+        cd "${HR_LOCAL_DIR}/samplefs"
+        bash "${HR_LOCAL_DIR}/samplefs/make_ubuntu_samplefs.sh" desktop
+
+        mkdir -p "${HR_LOCAL_DIR}/rootfs"
+        cp -f "${HR_LOCAL_DIR}"/samplefs/desktop/${SAMPLEFS_ARCHIVE} "${HR_LOCAL_DIR}/rootfs/"
+
+        echo "[rootfs] Saving rootfs cache..."
+        mkdir -p "$(dirname "${CACHE_FILE}")"
+        cp -f "${HR_LOCAL_DIR}/rootfs/${SAMPLEFS_ARCHIVE}" "${CACHE_FILE}"
+    fi
 
     # Extract samplefs to deploy/rootfs/ as sysroot for cross-compilation (hobot-spdev etc.)
     echo "[rootfs] Extracting samplefs to deploy/rootfs for sysroot..."
     local SYSROOT_DIR="${HR_LOCAL_DIR}/deploy/rootfs"
     rm -rf "${SYSROOT_DIR}"
     mkdir -p "${SYSROOT_DIR}"
-    tar --same-owner --numeric-owner -xzpf "${HR_LOCAL_DIR}"/rootfs/samplefs_desktop_*.tar.gz -C "${SYSROOT_DIR}"
+    tar --same-owner --numeric-owner -xzpf "${HR_LOCAL_DIR}"/rootfs/${SAMPLEFS_ARCHIVE} -C "${SYSROOT_DIR}"
 
     echo "[rootfs] Done."
 }
